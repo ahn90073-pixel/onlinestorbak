@@ -1,0 +1,60 @@
+name: Seed Test Product
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Insert test product in first active store
+        run: |
+          node --input-type=module <<'NODE'
+          import { neon } from '@neondatabase/serverless';
+          if (!process.env.DATABASE_URL) throw new Error('Missing DATABASE_URL');
+          const sql = neon(process.env.DATABASE_URL);
+          const rows = await sql(`
+            with active_company as (
+              select id, currency
+              from app.companies
+              where status = 'active'
+              order by created_at
+              limit 1
+            ), inserted as (
+              insert into app.products (
+                company_id, sku, name, slug, description, short_description,
+                status, price, compare_at_price, currency, brand, seller_name,
+                trusted_seller, free_shipping, is_featured, badge, published_at
+              )
+              select
+                id,
+                'TEST-SKU-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
+                'منتج تجريبي من Neon',
+                'test-neon-product-' || floor(extract(epoch from clock_timestamp()))::bigint,
+                'هذا منتج تجريبي للتأكد من اتصال Cloudflare Worker بقاعدة Neon.',
+                'منتج اختبار للمتجر',
+                'active', 99.99, 129.99, currency, 'Test Brand', 'Neon Test Seller',
+                true, true, true, 'تجريبي', now()
+              from active_company
+              returning id, company_id, sku, slug, name, price, currency
+            )
+            select inserted.*, c.slug as store_slug
+            from inserted join app.companies c on c.id = inserted.company_id
+          `);
+          if (!rows.length) throw new Error('No active company found. Activate a company first.');
+          console.log(JSON.stringify(rows[0]));
+          NODE
