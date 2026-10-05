@@ -1,27 +1,21 @@
 
-## Vite وCloudflare deployment
+## GitHub Actions وDATABASE_URL
 
-تم تجهيز المشروع باستخدام `vite` و`@cloudflare/vite-plugin`.
+يوجد Workflow في `.github/workflows/deploy-cloudflare.yml` يعمل عند كل push إلى `main` أو يدويًا من تبويب Actions. يقوم بالآتي:
 
-```bash
-# تشغيل التطوير عبر Vite
-npm run dev
+1. تثبيت الحزم والتحقق من TypeScript.
+2. قراءة `DATABASE_URL` من GitHub Secret.
+3. رفعها إلى Cloudflare كـWorker Secret باسم `DATABASE_URL`.
+4. بناء ونشر Worker.
 
-# فحص TypeScript
-npm run typecheck
+أضف هذه الأسرار في GitHub من:
 
-# إنشاء build الإنتاج
-npm run build
+`Settings → Secrets and variables → Actions → New repository secret`
 
-# build ثم نشر Worker إلى Cloudflare
-npm run deploy
+```text
+DATABASE_URL             قيمة اتصال Neon الكاملة
+CLOUDFLARE_API_TOKEN     Cloudflare API Token بصلاحية Workers Scripts Edit
+CLOUDFLARE_ACCOUNT_ID    Account ID الخاص بحساب Cloudflare
 ```
 
-يولّد Vite ملفات Worker داخل `dist/neon-store-api/` ويعيد توجيه Wrangler تلقائيًا إلى إعداد build الناتج. ضع سر Neon قبل النشر:
-
-```bash
-npx wrangler secret put DATABASE_URL
-npm run deploy
-```
-
-تم اختبار `npm run deploy -- --dry-run` بنجاح.
+`DATABASE_URL` لا يتم طباعتها في سجل GitHub ولا تُحفظ داخل المستودع. استخدمنا Worker Secret لأنها قيمة حساسة، وليس Cloudflare plaintext variable.
