@@ -1,0 +1,8 @@
+name = "neon-store-api"
+main = "src/index.ts"
+compatibility_date = "2026-10-05"
+workers_dev = true
+
+[vars]
+# Comma-separated browser origins. Set the real frontend URL in Cloudflare Variables.
+ALLOWED_ORIGINS = "*"

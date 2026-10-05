@@ -1,0 +1,2 @@
+DATABASE_URL="postgresql://user:password@ep-example.neon.tech/dbname?sslmode=require"
+ALLOWED_ORIGINS="http://localhost:3000,https://your-frontend.example.com"
