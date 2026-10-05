@@ -28,47 +28,26 @@ jobs:
           if (!process.env.DATABASE_URL) throw new Error('Missing DATABASE_URL');
           const sql = neon(process.env.DATABASE_URL);
           const rows = await sql(`
-            with active_company as (
-              select id, currency
-              from app.companies
-              where status = 'active'
-              order by created_at
+            with keep as (
+              select id
+              from app.products
+              where sku like 'TEST-SKU-%'
+              order by created_at desc
               limit 1
-            ), new_company as (
-              insert into app.companies (
-                slug, legal_name, display_name, status, currency, timezone, tenant_schema_name
-              )
-              select
-                'test-store-' || floor(extract(epoch from clock_timestamp()))::bigint,
-                'Neon Test Company', 'Neon Test Store', 'active', 'EGP', 'Africa/Cairo',
-                'tenant_' || replace(gen_random_uuid()::text, '-', '')
-              where not exists (select 1 from active_company)
-              returning id, currency
-            ), ensured_company as (
-              select id, currency from active_company
-              union all
-              select id, currency from new_company
-            ), inserted as (
-              insert into app.products (
-                company_id, sku, name, slug, description, short_description,
-                status, price, compare_at_price, currency, brand, seller_name,
-                trusted_seller, free_shipping, is_featured, badge, published_at
-              )
-              select
-                id,
-                'TEST-SKU-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS'),
-                'منتج تجريبي من Neon',
-                'test-neon-product-' || floor(extract(epoch from clock_timestamp()))::bigint,
-                'هذا منتج تجريبي للتأكد من اتصال Cloudflare Worker بقاعدة Neon.',
-                'منتج اختبار للمتجر',
-                'active', 99.99, 129.99, currency, 'Test Brand', 'Neon Test Seller',
-                true, true, true, 'تجريبي', now()
-              from ensured_company
-              returning id, company_id, sku, slug, name, price, currency
+            ), deleted as (
+              delete from app.products
+              where sku like 'TEST-SKU-%'
+                and id not in (select id from keep)
+              returning id
             )
-            select inserted.*, c.slug as store_slug
-            from inserted join app.companies c on c.id = inserted.company_id
+            select p.id, p.company_id, p.sku, p.slug, p.name, p.price, p.currency,
+                   c.slug as store_slug
+            from app.products p
+            join app.companies c on c.id = p.company_id
+            where p.sku like 'TEST-SKU-%'
+            order by p.created_at desc
+            limit 1
           `);
-          if (!rows.length) throw new Error('Could not create or find a test company.');
+          if (!rows.length) throw new Error('No test product found to clean.');
           console.log(JSON.stringify(rows[0]));
           NODE
