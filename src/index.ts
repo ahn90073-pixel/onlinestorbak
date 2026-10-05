@@ -33,9 +33,23 @@ app.use('*', async (c, next) => {
 app.use('*', async (c, next) => {
   if (c.req.method === 'OPTIONS') return c.body(null, 204);
   await next();
+  // Explicitly apply CORS after the route as well, including normal error responses.
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Store-Slug, X-Cart-Key');
 });
 
+app.get('/', (c) => c.json({ ok: true, message: 'Neon Store API is running', service: 'neon-store-api' }));
 app.get('/health', (c) => c.json({ ok: true, service: 'neon-store-api' }));
+
+// Backward-compatible catalog alias for mobile clients.
+app.use('/api/products', async (c) => {
+  const url = new URL(c.req.url);
+  if (url.pathname === '/api/products') {
+    url.pathname = '/api/v1/products';
+    return app.fetch(new Request(url, c.req.raw), c.env, c.executionCtx);
+  }
+});
 
 function getDb(env: Env): Db {
   if (!env.DATABASE_URL) throw new Error('DATABASE_URL is not configured');
@@ -73,6 +87,9 @@ function publicStore(store: Row) {
 }
 
 function error(c: any, status: 400 | 401 | 404 | 409 | 500, message: string) {
+  c.header('Access-Control-Allow-Origin', '*');
+  c.header('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  c.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Store-Slug, X-Cart-Key');
   return c.json({ ok: false, error: { code: message.toUpperCase().replaceAll(' ', '_'), message } }, status);
 }
 
