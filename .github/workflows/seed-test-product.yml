@@ -34,9 +34,7 @@ jobs:
               where status = 'active'
               order by created_at
               limit 1
-            ), ensured_company as (
-              select id, currency from active_company
-              union all
+            ), new_company as (
               insert into app.companies (
                 slug, legal_name, display_name, status, currency, timezone, tenant_schema_name
               )
@@ -46,6 +44,10 @@ jobs:
                 'tenant_' || replace(gen_random_uuid()::text, '-', '')
               where not exists (select 1 from active_company)
               returning id, currency
+            ), ensured_company as (
+              select id, currency from active_company
+              union all
+              select id, currency from new_company
             ), inserted as (
               insert into app.products (
                 company_id, sku, name, slug, description, short_description,
