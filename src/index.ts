@@ -137,7 +137,8 @@ function productJsonSql() {
         'price', coalesce(v.price, p.price), 'compareAtPrice', v.compare_at_price,
         'weightGrams', v.weight_grams, 'isActive', v.is_active
       ) order by v.created_at) from app.product_variants v where v.product_id = p.id and v.is_active), '[]'::json),
-      'availableQuantity', coalesce((select sum(greatest(i.quantity_on_hand - i.quantity_reserved, 0)) from app.inventory i where i.product_id = p.id and i.company_id = p.company_id), 0)
+      'availableQuantity', coalesce((select sum(greatest(i.quantity_on_hand - i.quantity_reserved, 0)) from app.inventory i where i.product_id = p.id and i.company_id = p.company_id), 0),
+      'stockQuantity', coalesce((select sum(greatest(i.quantity_on_hand - i.quantity_reserved, 0)) from app.inventory i where i.product_id = p.id and i.company_id = p.company_id), 0)
     )`;
 }
 
