@@ -4,9 +4,12 @@
 يوجد Workflow في `.github/workflows/deploy-cloudflare.yml` يعمل عند كل push إلى `main` أو يدويًا من تبويب Actions. يقوم بالآتي:
 
 1. تثبيت الحزم والتحقق من TypeScript.
-2. قراءة `DATABASE_URL` من GitHub Secret.
-3. رفعها إلى Cloudflare كـWorker Secret باسم `DATABASE_URL`.
-4. بناء ونشر Worker.
+2. تطبيق migration آمن ومتكرر لإضافة PostGIS وحقول الموقع التقريبي إلى `app.device_tokens`.
+3. قراءة `DATABASE_URL` من GitHub Secret.
+4. رفعها إلى Cloudflare كـWorker Secret باسم `DATABASE_URL`.
+5. بناء ونشر Worker.
+
+يسجل `POST /api/v1/notifications/token` توكن FCM في `app.device_tokens`. يستخرج Cloudflare أسماء المدينة والمنطقة والبلد ونقطة جغرافية تقريبية من IP عند توفرها؛ لا يطلب التطبيق إذن GPS ولا يخزن عنوان IP الخام.
 
 أضف هذه الأسرار في GitHub من:
 
