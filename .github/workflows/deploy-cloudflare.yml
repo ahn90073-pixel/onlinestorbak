@@ -44,6 +44,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Unit tests
+        run: npm test
+
+      - name: Apply device-token location migration
+        run: node scripts/apply-device-token-location-migration.mjs
+
       - name: Upload DATABASE_URL to Cloudflare Worker Secret
         shell: bash
         run: |

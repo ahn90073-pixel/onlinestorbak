@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { getCloudflareLocation } from './location.js';
 
 interface Env {
   DATABASE_URL: string;
@@ -23,7 +24,7 @@ function allowedOrigin(env: Env) {
 app.use('*', async (c, next) => {
   const result = cors({
     origin: allowedOrigin(c.env),
-    allowMethods: ['GET', 'OPTIONS'],
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization', 'X-Store-Slug', 'X-Cart-Key'],
     maxAge: 86400,
   });
@@ -41,6 +42,53 @@ app.use('*', async (c, next) => {
 
 app.get('/', (c) => c.json({ ok: true, message: 'Neon Store API is running', service: 'neon-store-api' }));
 app.get('/health', (c) => c.json({ ok: true, service: 'neon-store-api' }));
+
+app.post('/api/v1/notifications/token', async (c) => {
+  let payload: unknown;
+  try {
+    payload = await c.req.json();
+  } catch {
+    return error(c, 400, 'invalid JSON body');
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return error(c, 400, 'JSON body must be an object');
+  const body = payload as { token?: unknown; platform?: unknown; appVersion?: unknown };
+
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  const platform = typeof body.platform === 'string' ? body.platform.trim().toLowerCase() : '';
+  const appVersion = typeof body.appVersion === 'string' ? body.appVersion.trim().slice(0, 50) || null : null;
+  if (!token || token.length > 4096) return error(c, 400, 'valid device token is required');
+  if (!['android', 'ios', 'web'].includes(platform)) return error(c, 400, 'platform must be android, ios, or web');
+
+  const requestWithCf = c.req.raw as Request & { cf?: Record<string, unknown> };
+  const location = getCloudflareLocation(requestWithCf);
+  try {
+    const db = getDb(c.env);
+    await db(
+      `INSERT INTO app.device_tokens
+        (token, platform, app_version, enabled, last_seen_at,
+         location_city, location_region, location_country, location_point)
+       VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6,
+         CASE WHEN $7::double precision IS NOT NULL AND $8::double precision IS NOT NULL
+           THEN ST_SetSRID(ST_MakePoint($8::double precision, $7::double precision), 4326)::geography
+           ELSE NULL END)
+       ON CONFLICT (token) DO UPDATE SET
+         platform = EXCLUDED.platform,
+         app_version = COALESCE(EXCLUDED.app_version, app.device_tokens.app_version),
+         enabled = TRUE,
+         last_seen_at = NOW(),
+         location_city = COALESCE(EXCLUDED.location_city, app.device_tokens.location_city),
+         location_region = COALESCE(EXCLUDED.location_region, app.device_tokens.location_region),
+         location_country = COALESCE(EXCLUDED.location_country, app.device_tokens.location_country),
+         location_point = COALESCE(EXCLUDED.location_point, app.device_tokens.location_point)`,
+      [token, platform, appVersion, location.locationCity, location.locationRegion,
+        location.locationCountry, location.locationLatitude, location.locationLongitude],
+    );
+    return c.json({ ok: true, data: { registered: true, locationCity: location.locationCity } });
+  } catch (e) {
+    console.error(e);
+    return error(c, 500, 'device token registration failed');
+  }
+});
 
 // Backward-compatible catalog alias for mobile clients.
 app.use('/api/products', async (c) => {
