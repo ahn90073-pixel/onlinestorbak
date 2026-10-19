@@ -350,11 +350,15 @@ create table if not exists app.device_tokens (
   token text not null unique,
   platform text not null check (platform in ('android', 'ios', 'web')),
   app_version text,
+  governorate text,
   enabled boolean not null default true,
   last_seen_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+create index if not exists device_tokens_governorate_idx
+  on app.device_tokens (governorate) where governorate is not null;
 
 create table if not exists app.notifications (
   id uuid primary key default gen_random_uuid(),

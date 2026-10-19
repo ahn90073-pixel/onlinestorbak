@@ -50,6 +50,9 @@ jobs:
       - name: Apply device-token location migration
         run: node scripts/apply-device-token-location-migration.mjs
 
+      - name: Apply customer device-token governorate migration
+        run: node scripts/apply-customer-device-token-governorate-migration.mjs
+
       - name: Upload DATABASE_URL to Cloudflare Worker Secret
         shell: bash
         run: |

@@ -46,3 +46,14 @@ test('PostGIS migration and deploy script add a geography point and GiST index i
   assert.match(script, /app\.device_tokens/);
   assert.match(script, /CREATE INDEX IF NOT EXISTS/);
 });
+
+test('customer token registration stores only a valid governorate and deployment applies its migration', () => {
+  const migration = readFileSync(new URL('../migrations/003_customer_device_token_governorate.sql', import.meta.url), 'utf8');
+  const script = readFileSync(new URL('../scripts/apply-customer-device-token-governorate-migration.mjs', import.meta.url), 'utf8');
+  const route = readFileSync(new URL('../src/index.ts', import.meta.url), 'utf8');
+  assert.match(migration, /ALTER TABLE app\.device_tokens[\s\S]*ADD COLUMN IF NOT EXISTS governorate TEXT/);
+  assert.match(migration, /ALTER TABLE public\.notification_contacts[\s\S]*ADD COLUMN IF NOT EXISTS governorate TEXT/);
+  assert.match(script, /ADD COLUMN IF NOT EXISTS governorate TEXT/);
+  assert.match(route, /governorate must be a valid Egyptian governorate/);
+  assert.match(route, /governorate = COALESCE\(EXCLUDED\.governorate, app\.device_tokens\.governorate\)/);
+});

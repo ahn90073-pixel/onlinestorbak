@@ -12,6 +12,18 @@ type Db = (query: string, params?: unknown[]) => Promise<Row[]>;
 type Row = Record<string, unknown>;
 
 const app = new Hono<{ Bindings: Env }>();
+const EGYPT_GOVERNORATES = new Set([
+  'القاهرة', 'الجيزة', 'الإسكندرية', 'الدقهلية', 'البحر الأحمر', 'البحيرة', 'الفيوم',
+  'الغربية', 'الإسماعيلية', 'المنوفية', 'المنيا', 'القليوبية', 'الوادي الجديد',
+  'السويس', 'أسوان', 'أسيوط', 'بني سويف', 'بورسعيد', 'دمياط', 'الشرقية',
+  'جنوب سيناء', 'كفر الشيخ', 'مطروح', 'الأقصر', 'قنا', 'شمال سيناء', 'سوهاج',
+]);
+
+function normalizeGovernorate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  return EGYPT_GOVERNORATES.has(normalized) ? normalized : null;
+}
 
 function allowedOrigin(env: Env) {
   const configured = (env.ALLOWED_ORIGINS || '*')
@@ -51,13 +63,17 @@ app.post('/api/v1/notifications/token', async (c) => {
     return error(c, 400, 'invalid JSON body');
   }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return error(c, 400, 'JSON body must be an object');
-  const body = payload as { token?: unknown; platform?: unknown; appVersion?: unknown };
+  const body = payload as { token?: unknown; platform?: unknown; appVersion?: unknown; governorate?: unknown };
 
   const token = typeof body.token === 'string' ? body.token.trim() : '';
   const platform = typeof body.platform === 'string' ? body.platform.trim().toLowerCase() : '';
   const appVersion = typeof body.appVersion === 'string' ? body.appVersion.trim().slice(0, 50) || null : null;
+  const governorateProvided = body.governorate !== undefined && body.governorate !== null
+    && !(typeof body.governorate === 'string' && body.governorate.trim() === '');
+  const governorate = governorateProvided ? normalizeGovernorate(body.governorate) : null;
   if (!token || token.length > 4096) return error(c, 400, 'valid device token is required');
   if (!['android', 'ios', 'web'].includes(platform)) return error(c, 400, 'platform must be android, ios, or web');
+  if (governorateProvided && !governorate) return error(c, 400, 'governorate must be a valid Egyptian governorate');
 
   const requestWithCf = c.req.raw as Request & { cf?: Record<string, unknown> };
   const location = getCloudflareLocation(requestWithCf);
@@ -65,25 +81,26 @@ app.post('/api/v1/notifications/token', async (c) => {
     const db = getDb(c.env);
     await db(
       `INSERT INTO app.device_tokens
-        (token, platform, app_version, enabled, last_seen_at,
+        (token, platform, app_version, enabled, last_seen_at, governorate,
          location_city, location_region, location_country, location_point)
-       VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6,
-         CASE WHEN $7::double precision IS NOT NULL AND $8::double precision IS NOT NULL
-           THEN ST_SetSRID(ST_MakePoint($8::double precision, $7::double precision), 4326)::geography
+       VALUES ($1, $2, $3, TRUE, NOW(), $4, $5, $6, $7,
+         CASE WHEN $8::double precision IS NOT NULL AND $9::double precision IS NOT NULL
+           THEN ST_SetSRID(ST_MakePoint($9::double precision, $8::double precision), 4326)::geography
            ELSE NULL END)
        ON CONFLICT (token) DO UPDATE SET
          platform = EXCLUDED.platform,
          app_version = COALESCE(EXCLUDED.app_version, app.device_tokens.app_version),
          enabled = TRUE,
          last_seen_at = NOW(),
+         governorate = COALESCE(EXCLUDED.governorate, app.device_tokens.governorate),
          location_city = COALESCE(EXCLUDED.location_city, app.device_tokens.location_city),
          location_region = COALESCE(EXCLUDED.location_region, app.device_tokens.location_region),
          location_country = COALESCE(EXCLUDED.location_country, app.device_tokens.location_country),
          location_point = COALESCE(EXCLUDED.location_point, app.device_tokens.location_point)`,
-      [token, platform, appVersion, location.locationCity, location.locationRegion,
+      [token, platform, appVersion, governorate, location.locationCity, location.locationRegion,
         location.locationCountry, location.locationLatitude, location.locationLongitude],
     );
-    return c.json({ ok: true, data: { registered: true, locationCity: location.locationCity } });
+    return c.json({ ok: true, data: { registered: true, locationCity: location.locationCity, governorate } });
   } catch (e) {
     console.error(e);
     return error(c, 500, 'device token registration failed');
